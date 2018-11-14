@@ -330,38 +330,38 @@
 
 #elif  defined(TARGET_HW_PX4_FMU_V5)
 
-# define APP_LOAD_ADDRESS               0x08008000
-# define BOOTLOADER_DELAY               5000
-# define INTERFACE_USB                  1
-# define INTERFACE_USART                1
-# define USBDEVICESTRING                "PX4 BL FMU v5.x"
-# define USBPRODUCTID                   0x0032
-# define BOOT_DELAY_ADDRESS             0x000001a0
+# define APP_LOAD_ADDRESS               0x08008000 			// bymark app_fw(飞控固件)在flash中的首地址
+# define BOOTLOADER_DELAY               5000				// bymark 处于USB pwr或者是bootloader请求所对应的等待时间，单位是Ms
+# define INTERFACE_USB                  1				// bymark bootloadering所使用的接口
+# define INTERFACE_USART                1				// bymark bootloadering所使用的接口
+# define USBDEVICESTRING                "PX4 BL FMU v5.x"		// bymark USB的ID
+# define USBPRODUCTID                   0x0032				// bymark PID应该要与defconfig中所定义的一致
+# define BOOT_DELAY_ADDRESS             0x000001a0			// bymark 从Linker Script中获取由APP_FW所提供的custom delay
 
-# define BOARD_TYPE                     50
-# define _FLASH_KBYTES                  (*(uint16_t *)0x1ff0f442)
-# define BOARD_FLASH_SECTORS            ((_FLASH_KBYTES == 0x400) ? 7 : 11)
-# define BOARD_FLASH_SIZE               (_FLASH_KBYTES * 1024)
+# define BOARD_TYPE                     50				// bymark 必须与.prototype中的boad_id相匹配，去哪里找.prototype？？？
+# define _FLASH_KBYTES                  (*(uint16_t *)0x1ff0f442)	// bymark 运行时，识别flash大小 run time flash size detection
+# define BOARD_FLASH_SECTORS            ((_FLASH_KBYTES == 0x400) ? 7 : 11)	// bymark 运行时，确定最后一物理扇区
+# define BOARD_FLASH_SIZE               (_FLASH_KBYTES * 1024)			// bymark 运行时，确定设备中总的flash大小
 
-# define OSC_FREQ                       16
+# define OSC_FREQ                       16				// bymrk 晶振频率，单位MHz
 
-# define BOARD_PIN_LED_ACTIVITY         GPIO7 // BLUE
-# define BOARD_PIN_LED_BOOTLOADER       GPIO6 // GREEN
-# define BOARD_PORT_LEDS                GPIOC
-# define BOARD_CLOCK_LEDS               RCC_AHB1ENR_GPIOCEN
-# define BOARD_LED_ON                   gpio_clear
+# define BOARD_PIN_LED_ACTIVITY         GPIO7 // BLUE  gpioC7
+# define BOARD_PIN_LED_BOOTLOADER       GPIO6 // GREEN gpioC6
+# define BOARD_PORT_LEDS                GPIOC // bymark led灯接到端口C上，使用的是pin7和pin6 
+# define BOARD_CLOCK_LEDS               RCC_AHB1ENR_GPIOCEN // bymark 使能端口C的时钟配置
+# define BOARD_LED_ON                   gpio_clear 	// bymark gpio输出为低时，灯打开，低导通
 # define BOARD_LED_OFF                  gpio_set
 
-# define BOARD_USART  					USART2
-# define BOARD_USART_CLOCK_REGISTER 	RCC_APB1ENR
-# define BOARD_USART_CLOCK_BIT      	RCC_APB1ENR_USART2EN
+# define BOARD_USART  					USART2 		// bymark 通信接口采用串口2
+# define BOARD_USART_CLOCK_REGISTER 	RCC_APB1ENR 			// bymark 串口的时钟配置
+# define BOARD_USART_CLOCK_BIT      	RCC_APB1ENR_USART2EN 		// bymark 串口2的时钟使能
 
-# define BOARD_PORT_USART   			GPIOD
-# define BOARD_PORT_USART_AF 			GPIO_AF7
-# define BOARD_PIN_TX     				GPIO5
-# define BOARD_PIN_RX		     		GPIO6
-# define BOARD_USART_PIN_CLOCK_REGISTER RCC_AHB1ENR
-# define BOARD_USART_PIN_CLOCK_BIT  	RCC_AHB1ENR_GPIODEN
+# define BOARD_PORT_USART   			GPIOD 			// bymark 串口2使用gpio端口D
+# define BOARD_PORT_USART_AF 			GPIO_AF7		// bymark gpio端口采用复用功能7（AF7）
+# define BOARD_PIN_TX     			GPIO5 			// bymark 串口2对应的TX引脚使用PD5
+# define BOARD_PIN_RX		     		GPIO6 			// bymark 串口2对应的RX引脚使用PD6
+# define BOARD_USART_PIN_CLOCK_REGISTER RCC_AHB1ENR 			// bymark 端口D的时钟配置
+# define BOARD_USART_PIN_CLOCK_BIT  	RCC_AHB1ENR_GPIODEN 		// bymark 端口D的时钟使能
 # define SERIAL_BREAK_DETECT_DISABLED   1
 
 /*
