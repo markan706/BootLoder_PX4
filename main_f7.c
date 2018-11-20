@@ -168,11 +168,12 @@ static const struct rcc_clock_scale clock_setup = {
 static uint32_t
 board_get_rtc_signature()
 {
+	// bymark Real-time clock (RTC), 使能RTC备份寄存器
 	/* enable the backup registers */
 	PWR_CR1 |= PWR_CR1_DBP;
 	RCC_BDCR |= RCC_BDCR_RTCEN;
 
-	uint32_t result = BOOT_RTC_REG;
+	uint32_t result = BOOT_RTC_REG;  // bymark 获取RTC备份寄存器的值
 
 	/* disable the backup registers */
 	RCC_BDCR &= RCC_BDCR_RTCEN;
@@ -237,7 +238,7 @@ board_test_force_pin()
 	volatile unsigned vote = 0;
 
 	for (samples = 0; samples < 200; samples++) {
-		if ((gpio_get(BOARD_FORCE_BL_PORT, BOARD_FORCE_BL_PIN) ? 1 : 0) == BOARD_FORCE_BL_STATE) {
+		if ((gpio_get(BOARD_FORCE_BL_PORT, BOARD_FORCE_BL_PIN) ? 1 : 0) == BOARD_FORCE_BL_STATE) { // bymark 强制bootloader引脚为高
 			vote++;
 		}
 	}
@@ -255,6 +256,7 @@ board_test_force_pin()
 static bool
 board_test_usart_receiving_break()
 {
+	 // bymark PX4_FMU_V5是定义了SERIAL_BREAK_DETECT_DISABLED为1，即关闭串口检测break_booting的功能
 #if !defined(SERIAL_BREAK_DETECT_DISABLED)
 	/* (re)start the SysTick timer system */
 	systick_interrupt_disable(); // Kill the interrupt if it is still active
@@ -320,8 +322,9 @@ static void
 board_init(void)
 {
 	/* fix up the max firmware size, we have to read memory to get this */
-	board_info.fw_size = APP_SIZE_MAX;
+	board_info.fw_size = APP_SIZE_MAX; // bymark 设置固件大小的最大值 
 
+// bymark 默认情况下PX4_FMU_V5 没有定义BOARD_POWER_PIN_OUT
 #if defined(BOARD_POWER_PIN_OUT)
 	/* Configure the Power pins */
 	rcc_peripheral_enable_clock(&BOARD_POWER_CLOCK_REGISTER, BOARD_POWER_CLOCK_BIT);
@@ -330,28 +333,37 @@ board_init(void)
 	BOARD_POWER_ON(BOARD_POWER_PORT, BOARD_POWER_PIN_OUT);
 #endif
 
+// bymark 采用usb通信接口 VBUS线是HOST/HUB向USB设备供电的电源线, 即平常USB设备的+5V
 #if INTERFACE_USB
 	/* enable Port A GPIO9 to sample VBUS */
+	// bymark 端口A的时钟使能
 	rcc_peripheral_enable_clock(&RCC_AHB1ENR, RCC_AHB1ENR_GPIOAEN);
 #  if defined(USE_VBUS_PULL_DOWN)
+	// bymark 对GPIOA9进行引脚属性配置
 	gpio_mode_setup(GPIOA, GPIO_MODE_INPUT, GPIO_PUPD_PULLDOWN, GPIO9);
 #  endif
 #endif
 
+// bymark 采用串口作为通信接口
 #if INTERFACE_USART
 	/* configure USART pins */
+	// bymark 串口使用了Port D下面的Pin, 所以使能端口D的时钟
 	rcc_peripheral_enable_clock(&BOARD_USART_PIN_CLOCK_REGISTER, BOARD_USART_PIN_CLOCK_BIT);
 
 	/* Setup GPIO pins for USART transmit. */
+	// bymark 配置PD5和PD6的引脚模式属性
 	gpio_mode_setup(BOARD_PORT_USART, GPIO_MODE_AF, GPIO_PUPD_PULLUP, BOARD_PIN_TX | BOARD_PIN_RX);
 	/* Setup USART TX & RX pins as alternate function. */
+	// bymark 设置引脚PD5和PD6的复用功能
 	gpio_set_af(BOARD_PORT_USART, BOARD_PORT_USART_AF, BOARD_PIN_TX);
 	gpio_set_af(BOARD_PORT_USART, BOARD_PORT_USART_AF, BOARD_PIN_RX);
 
 	/* configure USART clock */
+	// bymark 使能串口的时钟
 	rcc_peripheral_enable_clock(&BOARD_USART_CLOCK_REGISTER, BOARD_USART_CLOCK_BIT);
 #endif
 
+// bymark 默认情况下PX4_FMU_V5 没有定义BOARD_FORCE_BL_PIN_IN和BOARD_FORCE_BL_PIN_OUT
 #if defined(BOARD_FORCE_BL_PIN_IN) && defined(BOARD_FORCE_BL_PIN_OUT)
 	/* configure the force BL pins */
 	rcc_peripheral_enable_clock(&BOARD_FORCE_BL_CLOCK_REGISTER, BOARD_FORCE_BL_CLOCK_BIT);
@@ -360,6 +372,7 @@ board_init(void)
 	gpio_set_output_options(BOARD_FORCE_BL_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_100MHZ, BOARD_FORCE_BL_PIN_OUT);
 #endif
 
+// bymark 默认情况下PX4_FMU_V5 没有定义BOARD_FORCE_BL_PIN
 #if defined(BOARD_FORCE_BL_PIN)
 	/* configure the force BL pins */
 	rcc_peripheral_enable_clock(&BOARD_FORCE_BL_CLOCK_REGISTER, BOARD_FORCE_BL_CLOCK_BIT);
@@ -368,22 +381,27 @@ board_init(void)
 
 #if defined(BOARD_CLOCK_LEDS)
 	/* initialise LEDs */
+	// bymark 默认情况下，led是接到端口C下面的Pin上，端口C的时钟使能
 	rcc_peripheral_enable_clock(&RCC_AHB1ENR, BOARD_CLOCK_LEDS);
+	// bymark 配置引脚PC6和PC7的模式
 	gpio_mode_setup(
 		BOARD_PORT_LEDS,
 		GPIO_MODE_OUTPUT,
 		GPIO_PUPD_NONE,
 		BOARD_PIN_LED_BOOTLOADER | BOARD_PIN_LED_ACTIVITY);
+	// bymark 配置引脚PC6和PC7输出属性
 	gpio_set_output_options(
 		BOARD_PORT_LEDS,
 		GPIO_OTYPE_PP,
 		GPIO_OSPEED_2MHZ,
 		BOARD_PIN_LED_BOOTLOADER | BOARD_PIN_LED_ACTIVITY);
+	// bymark 打开led(低导通：当PC6或PC7输出为低时，led导通)
 	BOARD_LED_ON(
 		BOARD_PORT_LEDS,
 		BOARD_PIN_LED_BOOTLOADER | BOARD_PIN_LED_ACTIVITY);
 #endif
 	/* enable the power controller clock */
+	// bymark pwr控制器时钟使能
 	rcc_peripheral_enable_clock(&RCC_APB1ENR, RCC_APB1ENR_PWREN);
 }
 
@@ -702,12 +720,15 @@ led_toggle(unsigned led)
 int
 main(void)
 {
-	bool try_boot = true;			/* try booting before we drop to the bootloader */
-	unsigned timeout = BOOTLOADER_DELAY;	/* if nonzero, drop out of the bootloader after this time */
+	// bymark 在进入bootloader之前,尝试boot到操作系统（app_fw）
+	bool try_boot = true;			/* try booting before we drop to the bootloader */  
+	// bymark 在bootloader里面等待timeout这么久，然后离开，timeout默认是5000ms=5毫秒
+	unsigned timeout = BOOTLOADER_DELAY;	/* if nonzero, drop out of the bootloader after this time */ 
 
-	/* Enable the FPU before we hit any FP instructions */
+	/* Enable the FPU before we hit any FP instructions */   // bymark floating point unit(FPU) 使能浮点运算单元
 	SCB_CPACR |= ((3UL << 10 * 2) | (3UL << 11 * 2)); /* set CP10 Full Access and set CP11 Full Access */
 
+// bymark 默认情况下PX4_FMU_V5 没有宏定义 BOARD_POWER_PIN_OUT
 #if defined(BOARD_POWER_PIN_OUT)
 
 	/* Here we check for the app setting the POWER_DOWN_RTC_SIGNATURE
@@ -722,32 +743,32 @@ main(void)
 #endif
 
 	/* do board-specific initialisation */
-	board_init();
+	board_init(); 	// bymark USB, USART,LED的引脚配置和时钟使能，然后开启LED
 
 	/* configure the clock for bootloader activity */
-	clock_init();
+	clock_init();	//bymark 根据晶振频率初始化RCC时钟配置
 
 	/*
 	 * Check the force-bootloader register; if we find the signature there, don't
-	 * try booting.
+	 * try booting. 检查强制bootloader寄存器（即RTC备份寄存器RTC_BKPxR），如果找到该标志位，则不去尝试boot到飞控系统
 	 */
-	if (board_get_rtc_signature() == BOOT_RTC_SIGNATURE) {
+	if (board_get_rtc_signature() == BOOT_RTC_SIGNATURE) {  // bymark 获取RTC备份寄存器RTC_BKPxR的值，来决定是否会boot到bootloader中
 
 		/*
 		 * Don't even try to boot before dropping to the bootloader.
 		 */
-		try_boot = false;
+		try_boot = false; // bymark 不去尝试boot到飞控系统
 
 		/*
 		 * Don't drop out of the bootloader until something has been uploaded.
 		 */
-		timeout = 0;
+		timeout = 0; // bymark 一直在bootloader中等待，直到升级完成
 
 		/*
 		 * Clear the signature so that if someone resets us while we're
 		 * in the bootloader we'll try to boot next time.
 		 */
-		board_set_rtc_signature(0);
+		board_set_rtc_signature(0); // bymark 对RTC备份寄存器RTC_BKPxR清零
 	}
 
 #ifdef BOOT_DELAY_ADDRESS
@@ -759,17 +780,18 @@ main(void)
 		  new firmware, while still booting fast by sending a BOOT
 		  command
 		 */
-		uint32_t sig1 = flash_func_read_word(BOOT_DELAY_ADDRESS);
-		uint32_t sig2 = flash_func_read_word(BOOT_DELAY_ADDRESS + 4);
+		// bymark 如果设置了boot_delay标志，就要延时n秒后再boot（n是设定值），这样做的目的是为了companion computer有机会去加载新的固件
+		uint32_t sig1 = flash_func_read_word(BOOT_DELAY_ADDRESS);  // bymark 获取boot_delay标志
+		uint32_t sig2 = flash_func_read_word(BOOT_DELAY_ADDRESS + 4); // bymark 获取boot_delay标志
 
 		if (sig2 == BOOT_DELAY_SIGNATURE2 &&
-		    (sig1 & 0xFFFFFF00) == (BOOT_DELAY_SIGNATURE1 & 0xFFFFFF00)) {
-			unsigned boot_delay = sig1 & 0xFF;
+		    (sig1 & 0xFFFFFF00) == (BOOT_DELAY_SIGNATURE1 & 0xFFFFFF00)) { // bymark 宏BOOT_DELAY_SIGNATURE1为0x92c2ecff(32bits),其中低8位是对应的boot_delay
+			unsigned boot_delay = sig1 & 0xFF; // bymark 获取boot的延时时间boot_delay毫秒
 
-			if (boot_delay <= BOOT_DELAY_MAX) {
-				try_boot = false;
+			if (boot_delay <= BOOT_DELAY_MAX) { // bymark 最大的boot延时时间是30毫秒
+				try_boot = false; // bymark 不去尝试boot到飞控系统
 
-				if (timeout < boot_delay * 1000) {
+				if (timeout < boot_delay * 1000) {  // bymark boot_delay ---> timeout(在bootloader中的停留时长，单位是ms)
 					timeout = boot_delay * 1000;
 				}
 			}
@@ -781,6 +803,7 @@ main(void)
 	 * Check if the force-bootloader pins are strapped; if strapped,
 	 * don't try booting.
 	 */
+	// bymark 检测强制bootloader的引脚，默认情况下，PX4_FMU_V5没有定义强制bootloader的引脚
 	if (board_test_force_pin()) {
 		try_boot = false;
 	}
@@ -789,15 +812,17 @@ main(void)
 
 	/*
 	 * Check for USB connection - if present, don't try to boot, but set a timeout after
-	 * which we will fall out of the bootloader.
+	 * which we will fall out of the bootloader. 
 	 *
 	 * If the force-bootloader pins are tied, we will stay here until they are removed and
 	 * we then time out.
 	 */
+
+	// bymark 默认情况下，PX4_FMU_V5没有定义BOARD_USB_VBUS_SENSE_DISABLED，即如果采用USB连接，就使用USB供电，VUSB是电源线
 #if defined(BOARD_USB_VBUS_SENSE_DISABLED)
 	try_boot = false;
 #else
-
+	// bymark VUSB对应的引脚是GPIOA9, 当有USB连接，则GPIOA9不为零。有USB连接，则不去尝试boot到飞控系统
 	if (gpio_get(GPIOA, GPIO9) != 0) {
 
 		/* don't try booting before we set up the bootloader */
@@ -817,7 +842,8 @@ main(void)
 	 * If the force-bootloader pins are tied, we will stay here until they are removed and
 	 * we then time out.
 	 */
-	if (board_test_usart_receiving_break()) {
+	// 检测串口的RX引脚是否收到break指令，或者保持为低，如果是，则不去尝试boot到飞控系统
+	if (board_test_usart_receiving_break()) { // bymark 默认情况下，PX4_FMU_V5定义了SERIAL_BREAK_DETECT_DISABLED为1，即关闭串口检测break指令
 		try_boot = false;
 	}
 
@@ -827,24 +853,27 @@ main(void)
 	if (try_boot) {
 
 		/* set the boot-to-bootloader flag so that if boot fails on reset we will stop here */
+		// bymark  默认情况下，PX4_FMU_V5没有定义BOARD_BOOT_FAIL_DETECT
 #ifdef BOARD_BOOT_FAIL_DETECT
 		board_set_rtc_signature(BOOT_RTC_SIGNATURE);
 #endif
 
 		/* try to boot immediately */
-		jump_to_app();
+		jump_to_app(); // bymark 会根据flash中飞控固件的前两个字来确定是否要引导到飞控操作系统
 
 		// If it failed to boot, reset the boot signature and stay in bootloader
+		// bymark 尝试boot到飞控操作系统失败后，设置强制bootloader寄存器的标志
 		board_set_rtc_signature(BOOT_RTC_SIGNATURE);
 
 		/* booting failed, stay in the bootloader forever */
+		// bymark 尝试boot到飞控操作系统失败后，设置timeout为0，以便一直呆在bootloader中
 		timeout = 0;
 	}
 
 
 	/* start the interface */
 #if INTERFACE_USART
-	cinit(BOARD_INTERFACE_CONFIG_USART, USART);
+	cinit(BOARD_INTERFACE_CONFIG_USART, USART); // bymark 配置串口的波特率（默认115200），数据位(8bits)，停止位(1bit)，奇偶校验位(none)，流控制(none)，然后使能串口
 #endif
 #if INTERFACE_USB
 	cinit(BOARD_INTERFACE_CONFIG_USB, USB);
@@ -863,9 +892,11 @@ main(void)
 
 	while (1) {
 		/* run the bootloader, come back after an app is uploaded or we time out */
+		// bymark 进入bootloader，在飞控固件烧写完成或者超时后return
 		bootloader(timeout);
 
 		/* if the force-bootloader pins are strapped, just loop back */
+		// bymark 检测强制bootloader的引脚，默认情况下，PX4_FMU_V5没有定义强制bootloader的引脚
 		if (board_test_force_pin()) {
 			continue;
 		}
@@ -873,6 +904,7 @@ main(void)
 #if INTERFACE_USART
 
 		/* if the USART port RX line is still receiving a break, just loop back */
+		// bymark 默认情况下，PX4_FMU_V5定义了SERIAL_BREAK_DETECT_DISABLED为1，即关闭串口检测break指令
 		if (board_test_usart_receiving_break()) {
 			continue;
 		}
@@ -880,6 +912,7 @@ main(void)
 #endif
 
 		/* set the boot-to-bootloader flag so that if boot fails on reset we will stop here */
+		// bymark  默认情况下，PX4_FMU_V5没有定义BOARD_BOOT_FAIL_DETECT
 #ifdef BOARD_BOOT_FAIL_DETECT
 		board_set_rtc_signature(BOOT_RTC_SIGNATURE);
 #endif

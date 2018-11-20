@@ -243,12 +243,14 @@ do_jump(uint32_t stacktop, uint32_t entrypoint)
 void
 jump_to_app()
 {
-	const uint32_t *app_base = (const uint32_t *)APP_LOAD_ADDRESS;
+	const uint32_t *app_base = (const uint32_t *)APP_LOAD_ADDRESS; // bymark 获取飞控固件在flash中的首地址
 
 	/*
 	 * We refuse to program the first word of the app until the upload is marked
 	 * complete by the host.  So if it's not 0xffffffff, we should try booting it.
 	 */
+	// bymark 只有在固件写入完成后(在飞控收到host发送的boot指令后)，才将固件的第一个字（32bits）写入到相应的首地址中
+	// bymark 所以，如果相应首地址中值不是0xffffffff(通过写1来擦写)， 才尝试boot到飞控操作系统
 	if (app_base[0] == 0xffffffff) {
 		return;
 	}
@@ -257,6 +259,7 @@ jump_to_app()
 	 * The second word of the app is the entrypoint; it must point within the
 	 * flash area (or we have a bad flash).
 	 */
+	// bymark 飞控固件的第二个字是飞控固件在flash中的进入点（地址），所以第二个字必须是指向有效的flash区域内
 	if (app_base[1] < APP_LOAD_ADDRESS) {
 		return;
 	}
@@ -273,19 +276,19 @@ jump_to_app()
 	systick_counter_disable();
 
 	/* deinitialise the interface */
-	cfini();
+	cfini();  // bymark reset USB接口，串口，为boot到飞控操作系统做准备
 
 	/* reset the clock */
-	clock_deinit();
+	clock_deinit();	// bymark reset时钟配置，为boot到飞控操作系统做准备
 
 	/* deinitialise the board */
-	board_deinit();
+	board_deinit();	// bymark reset串口GPIO和时钟，还有LED的，为boot到飞控操作系统做准备
 
 	/* switch exception handlers to the application */
 	SCB_VTOR = APP_LOAD_ADDRESS;
 
 	/* extract the stack and entrypoint from the app vector table and go */
-	do_jump(app_base[0], app_base[1]);
+	do_jump(app_base[0], app_base[1]); // bymark 引导到飞控操作系统，堆栈分配
 }
 
 volatile unsigned timer[NTIMERS];
@@ -498,7 +501,7 @@ bootloader(unsigned timeout)
 	/* make the LED blink while we are idle */
 	led_set(LED_BLINK);
 
-	while (true) {
+	while (true) {  // bymark true下的while循环，用return退出或while下的break来退出
 		volatile int c;
 		int arg;
 		static union {
@@ -507,15 +510,18 @@ bootloader(unsigned timeout)
 		} flash_buffer;
 
 		// Wait for a command byte
+		// bymark 等待获取来自host的一个指令（8bit，一个字节）
 		led_off(LED_ACTIVITY);
 
 		do {
 			/* if we have a timeout and the timer has expired, return now */
+			// bymark timeout为0时是不会return，非0时到超时就return
 			if (timeout && !timer[TIMER_BL_WAIT]) {
 				return;
 			}
 
 			/* try to get a byte from the host */
+			// bymark 尝试从host获取一个字节，cin -- receive; cout -- send
 			c = cin_wait(0);
 
 		} while (c < 0);
@@ -523,6 +529,7 @@ bootloader(unsigned timeout)
 		led_on(LED_ACTIVITY);
 
 		// handle the command byte
+		// bymark 根据所收到的指令进行处理并反馈给host
 		switch (c) {
 
 		// sync
@@ -530,9 +537,11 @@ bootloader(unsigned timeout)
 		// command:		GET_SYNC/EOC
 		// reply:		INSYNC/OK
 		//
+		// bymark sync指令用于host与飞控板握手同步，用于固件烧录的第一步
 		case PROTO_GET_SYNC:
 
 			/* expect EOC */
+			// bymark 等待接收来自host的指令结束标志EOC
 			if (!wait_for_eoc(2)) {
 				goto cmd_bad;
 			}
@@ -549,6 +558,7 @@ bootloader(unsigned timeout)
 		// VEC_AREA reply	<vectors 7-10:16>/INSYNC/EOC
 		// bad arg reply:	INSYNC/INVALID
 		//
+		// bymark device指令用于host请求获取飞控板的设备信息，用于固件烧录的第二步
 		case PROTO_GET_DEVICE:
 			/* expect arg then EOC */
 			arg = cin_wait(1000);
@@ -599,6 +609,7 @@ bootloader(unsigned timeout)
 		// success reply:	INSYNC/OK
 		// erase failure:	INSYNC/FAILURE
 		//
+		// bymark erase指令用于host请求擦写飞控板的flash，用于固件烧录的第三步
 		case PROTO_CHIP_ERASE:
 
 			/* expect EOC */
@@ -615,9 +626,11 @@ bootloader(unsigned timeout)
 #endif
 			// clear the bootloader LED while erasing - it stops blinking at random
 			// and that's confusing
+			// bymark 在擦写flash时，bootloader LED开启
 			led_set(LED_ON);
 
 			// erase all sectors
+			// bymark 向flash的所有扇区写1完成擦写操作
 			flash_unlock();
 
 			for (int i = 0; flash_func_sector_size(i) != 0; i++) {
@@ -628,6 +641,7 @@ bootloader(unsigned timeout)
 			led_set(LED_OFF);
 
 			// verify the erase
+			// bymark 读出扇区里的值进行擦写确认
 			for (address = 0; address < board_info.fw_size; address += 4)
 				if (flash_func_read_word(address) != 0xffffffff) {
 					goto cmd_fail;
@@ -646,8 +660,10 @@ bootloader(unsigned timeout)
 		// invalid reply:	INSYNC/INVALID
 		// readback failure:	INSYNC/FAILURE
 		//
+		// bymark prog_multi指令用于host向飞控板发送固件数据，用于固件烧录的第四步
 		case PROTO_PROG_MULTI:		// program bytes
 			// expect count
+			// bymark 首先获取host此次向飞控板发送固件数据的长度，按字节（8bits）来算
 			arg = cin_wait(50);
 
 			if (arg < 0) {
@@ -655,7 +671,7 @@ bootloader(unsigned timeout)
 			}
 
 			// sanity-check arguments
-			if (arg % 4) {
+			if (arg % 4) { // byamrk 所接收到的飞控固件数据能用字（=4个字节）来表示，因为是按字来写入到flash中的
 				goto cmd_bad;
 			}
 
@@ -667,8 +683,8 @@ bootloader(unsigned timeout)
 				goto cmd_bad;
 			}
 
-			for (int i = 0; i < arg; i++) {
-				c = cin_wait(1000);
+			for (int i = 0; i < arg; i++) {  // bymark 一个一个字节地读取固件数据，并暂时存放于flash_buffer中
+				c = cin_wait(1000); 
 
 				if (c < 0) {
 					goto cmd_bad;
@@ -692,6 +708,7 @@ bootloader(unsigned timeout)
 #endif
 
 				// save the first word and don't program it until everything else is done
+				// bymark 记录下固件数据的第一个字的内容，等所有事都OK了才将其写入到flash中
 				first_word = flash_buffer.w[0];
 				// replace first word with bits we can overwrite later
 				flash_buffer.w[0] = 0xffffffff;
@@ -702,9 +719,11 @@ bootloader(unsigned timeout)
 			for (int i = 0; i < arg; i++) {
 
 				// program the word
+				// bymark 将所接收到的飞控固件数据按字写入从内存写入到flash中
 				flash_func_write_word(address, flash_buffer.w[i]);
 
 				// do immediate read-back verify
+				// bymark 写完一个字后，进行回读确认
 				if (flash_func_read_word(address) != flash_buffer.w[i]) {
 					goto cmd_fail;
 				}
@@ -719,6 +738,7 @@ bootloader(unsigned timeout)
 		// command:			GET_CRC/EOC
 		// reply:			<crc:4>/INSYNC/OK
 		//
+		// bymark CRC指令用于host向飞控板请求飞控固件的CRC校验数据，用于固件烧录的第五步
 		case PROTO_GET_CRC:
 
 			// expect EOC
@@ -732,7 +752,7 @@ bootloader(unsigned timeout)
 			for (unsigned p = 0; p < board_info.fw_size; p += 4) {
 				uint32_t bytes;
 
-				if ((p == 0) && (first_word != 0xffffffff)) {
+				if ((p == 0) && (first_word != 0xffffffff)) { // bymark 注意此时，飞控固件的第一个字尚未写入到flash中
 					bytes = first_word;
 
 				} else {
@@ -742,19 +762,20 @@ bootloader(unsigned timeout)
 				sum = crc32((uint8_t *)&bytes, sizeof(bytes), sum);
 			}
 
-			cout_word(sum);
+			cout_word(sum); // bymark 发送CRC校验码（一个字32bits）
 			break;
 
 		// read a word from the OTP
 		//
 		// command:			GET_OTP/<addr:4>/EOC
 		// reply:			<value:4>/INSYNC/OK
+		// bymark get_otp指令用于根据host所指定的地址读取flash中的值并反馈给host
 		case PROTO_GET_OTP:
 			// expect argument
 			{
 				uint32_t index = 0;
 
-				if (cin_word(&index, 100)) {
+				if (cin_word(&index, 100)) {  // bymark 接收host所发送的地址（一个字），存于index中
 					goto cmd_bad;
 				}
 
@@ -763,7 +784,7 @@ bootloader(unsigned timeout)
 					goto cmd_bad;
 				}
 
-				cout_word(flash_func_read_otp(index));
+				cout_word(flash_func_read_otp(index)); // bymark 根据index读取flash中的值并发送给host
 			}
 			break;
 
@@ -824,6 +845,12 @@ bootloader(unsigned timeout)
 
 #ifdef BOOT_DELAY_ADDRESS
 
+		// setup a boot delay signature in flash 
+		//
+		// command:		SET_DELAY/<value:4>/EOC
+		// success reply:	INSYNC/OK
+		// invalid reply:	INSYNC/INVALID
+		// bymark SET_DELAY指令用于host请求飞控板在flash的指定位置处写入一个boot_delay, 该boot_delay用于设置待在bootloader中的timeout
 		case PROTO_SET_DELAY: {
 				/*
 				  Allow for the bootloader to setup a
@@ -831,13 +858,13 @@ bootloader(unsigned timeout)
 				  board to delay for at least a
 				  specified number of seconds on boot.
 				 */
-				int v = cin_wait(100);
+				int v = cin_wait(100);  // bymark 接收host所提供的boot_delay（32bits），只取低8位用于boot_delay的设置
 
 				if (v < 0) {
 					goto cmd_bad;
 				}
 
-				uint8_t boot_delay = v & 0xFF;
+				uint8_t boot_delay = v & 0xFF; 
 
 				if (boot_delay > BOOT_DELAY_MAX) {
 					goto cmd_bad;
@@ -871,6 +898,9 @@ bootloader(unsigned timeout)
 		// command:			BOOT/EOC
 		// reply:			INSYNC/OK
 		//
+		// bymark boot指令有两个作用：
+		// bymark 一是host告知飞控板它已经将飞控固件数据发送完毕，让其将飞控固件的第一个字写入到flash中；
+		// bymark 二是host告知飞控板可以退出bootloader，然后尝试boot到飞控操作系统。
 		case PROTO_BOOT:
 
 			// expect EOC
@@ -915,7 +945,7 @@ bootloader(unsigned timeout)
 		}
 
 		// send the sync response for this command
-		sync_response();
+		sync_response();  // bymark 即回复:INSYNC/OK
 		continue;
 cmd_bad:
 		// send an 'invalid' response but don't kill the timeout - could be garbage
